@@ -1,0 +1,80 @@
+#!/usr/bin/env bash
+
+# Text Formatting
+LIGHT_TEXT="\\e[2m"
+BOLD_TEXT="\\e[1m"
+RED_TEXT="\\e[91m"
+YELLOW_TEXT="\\e[93m"
+GREEN_TEXT="\\e[92m"
+DEFAULT_TEXT="\\e[0m"
+# JIRA Self name
+SELF_NAME="aj"
+# JIRA Authentication Key
+JIRA_AUTH=
+# JIRA 'In Progress' Transition ID
+IN_PROGRESS_ID="21"
+# JIRA 'To Do' Transition ID
+TODO_ID='"10000"'
+# Temp File for JSON output
+JSON_TEMP_FILE=$(mktemp)
+# Static JIRA Curl Headers
+JIRA_HEADERS=(
+	'-H' "Authorization: Basic ${JIRA_AUTH}"
+	'-H' 'Content-Type: application/json'
+	'-w' '%{http_code}'
+	'-o' "${JSON_TEMP_FILE}"
+	'-s'
+)
+
+# Include other files
+# . $(git rev-parse --show-toplevel)/.git/hooks/thefunct
+
+# Gets current branch (string)
+BRANCH=`git branch | awk '/^\*/{print $2}'`
+
+# MATCHED returns 'true' if branch matches RegEx pattern found here:
+# https://community.atlassian.com/t5/Bitbucket-questions/Regex-pattern-to-match-JIRA-issue-key/qaq-p/233319
+MATCHED=$(node -p "!!'$(echo $BRANCH | rev)'.match(RegExp(/\d+-[A-Z]+(?!-?[a-zA-Z]{1,10})/));")
+
+
+if [ $MATCHED == "true" ]; then
+	echo -e "${BOLD_TEXT}JIRA Task Branch${DEFAULT_TEXT}"
+	HTTP_RESP=$(curl "${JIRA_HEADERS[@]}" "https://recoverybrands.atlassian.net/rest/api/2/issue/${BRANCH}/?fields=status")
+	STATUS_ID=$(cat ${JSON_TEMP_FILE} | jq '.fields.status.id')
+
+	if [ $HTTP_RESP == '200' ]; then
+
+		if [ $STATUS_ID == $TODO_ID ]; then
+			echo -en "${GREEN_TEXT}Changing ${BRANCH} status to \"In Progress\"...${DEFAULT_TEXT}"
+			HTTP_RESP=$(curl "${JIRA_HEADERS[@]}" -X POST -d "{\"transition\":{\"id\":\"${IN_PROGRESS_ID}\"}}" "https://recoverybrands.atlassian.net/rest/api/2/issue/${BRANCH}/transitions")
+
+			if [ $HTTP_RESP == '204' ]; then
+				echo -e "${GREEN_TEXT}DONE!${DEFAULT_TEXT}"
+
+				echo -en "${GREEN_TEXT}Assigning ${BRANCH} to \"${SELF_NAME}\"...${DEFAULT_TEXT}"
+				HTTP_RESP=$(curl "${JIRA_HEADERS[@]}" -X PUT -d "{\"name\":\"${SELF_NAME}\"}" "https://recoverybrands.atlassian.net/rest/api/2/issue/${BRANCH}/assignee")
+
+				if [ $HTTP_RESP == '204' ]; then
+					echo -e "${GREEN_TEXT}DONE!${DEFAULT_TEXT}"
+				else
+					echo -e "${RED_TEXT}FAILED!${DEFAULT_TEXT}"
+				fi
+
+			else
+				echo -e "${RED_TEXT}FAILED!${DEFAULT_TEXT}"
+				echo -e "${YELLOW_TEXT}Please change ${BRANCH} status manually.${DEFAULT_TEXT}"
+			fi
+
+		else
+			echo -e "${YELLOW_TEXT}${BRANCH} status was not \"To Do\". Leaving unchanged.${DEFAULT_TEXT}"
+		fi
+
+	else
+		echo -e "${RED_TEXT}Could not retrieve ${BRANCH} status. No status changes made.${DEFAULT_TEXT}"
+	fi
+
+else
+	echo -e "${LIGHT_TEXT}\"${BRANCH}\" is not a JIRA task ID.${DEFAULT_TEXT}"
+fi
+
+rm ${JSON_TEMP_FILE}
