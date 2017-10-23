@@ -1,0 +1,25 @@
+{
+  "name": "hooks",
+  "version": "1.0.0",
+  "description": "RB JS Git Hooks",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ajschmidt8/githooks-js.git"
+  },
+  "author": "AJ Schmidt",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/ajschmidt8/githooks-js/issues"
+  },
+  "homepage": "https://github.com/ajschmidt8/githooks-js#readme",
+  "dependencies": {
+    "chalk": "^2.2.0",
+    "git-rev-sync": "^1.9.1",
+    "inquirer": "^3.3.0",
+    "parse-git-config": "^1.1.1"
+  }
+}

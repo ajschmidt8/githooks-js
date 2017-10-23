@@ -1,0 +1,19 @@
+#!/usr/bin/env node
+
+// Imports
+const parseGitConfig = require('parse-git-config');
+const git = require('git-rev-sync');
+
+
+// Variable Setup
+const osUsername = require("os").userInfo().username;
+const gitConfig = parseGitConfig.sync({
+	path: `/Users/${osUsername}/.gitconfig`,
+});
+const jira = {
+	"self": gitConfig.jira.username,
+	"key": gitConfig.jira.key,
+	"inProgressId": 21,
+	"toDoId": 10000,
+};
+const currentBranch = git.branch();
