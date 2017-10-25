@@ -82,9 +82,17 @@ const getTaskInfo = (taskId = currentBranch) => {
 };
 
 const assignTaskToSelf = (taskId) => {
-	log('assigned to self');
 	return jiraAPI.put(`/issue/${taskId}/assignee`, {
 		"name": jira.self,
+	})
+	.then(response => {
+		if (response.status !== 204) {
+			log(chalk.red(`API Error. ${taskId} not assigned to you.`))
+		} else {
+			log(chalk.green(`${taskId} assigned to you.`));
+		}
+
+		return;
 	});
 };
 
