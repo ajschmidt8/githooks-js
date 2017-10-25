@@ -27,7 +27,7 @@ const jira = {
 };
 // Gets current branch name
 // const currentBranch = git.branch();
-const currentBranch = 'REH-317';
+const currentBranch = 'REH-332';
 // Boolean to determine if current branch is a Jira Task
 const isJiraTask = !!currentBranch.split("").reverse().join("").match(RegExp(/\d+-[A-Z]+(?!-?[a-zA-Z]{1,10})/));
 // Axios instance for pinging the JIRA API
@@ -35,6 +35,29 @@ const jiraAPI = axios.create({
 	baseURL: 'https://recoverybrands.atlassian.net/rest/api/2',
 	headers: {'Authorization': `Basic ${jira.key}`},
 });
+
+const getRelatedIssueChoices = (linkedIssues) => {
+
+	let relatedIssuesChoices = linkedIssues.reduce((filteredData, linkedIssue) => {
+		let direction = !!linkedIssue.inwardIssue ? 'inwardIssue' : 'outwardIssue';
+
+		if ((parseInt(linkedIssue.type.id) === jira.relatedIssueId) &&
+			(parseInt(linkedIssue[direction].fields.status.id) === jira.toDoId)) {
+
+				let taskId = linkedIssue[direction].key;
+				let taskTitle = linkedIssue[direction].fields.summary;
+
+				filteredData.push({
+					name: `[${taskId}] - ${taskTitle}`,
+					value: taskId,
+				});
+		}
+		return filteredData;
+
+	}, []);
+
+	return relatedIssuesChoices;
+};
 
 const setInProgress = (taskId = currentBranch) => {
 	return jiraAPI.post(`/issue/${taskId}/transitions`, {
@@ -49,16 +72,20 @@ const setInProgress = (taskId = currentBranch) => {
 			log(chalk.green(`${taskId} Changed to 'In Progress'`));
 		}
 
-		return response;
+		return assignTaskToSelf(taskId);
 	});
 };
 
 const getTaskInfo = (taskId = currentBranch) => {
 	return jiraAPI.get(`/issue/${taskId}/?fields=status,issuelinks,summary`);
+
 };
 
-const assignTaskToSelf = () => {
-
+const assignTaskToSelf = (taskId) => {
+	log('assigned to self');
+	return jiraAPI.put(`/issue/${taskId}/assignee`, {
+		"name": jira.self,
+	});
 };
 
 const relatedIssuePrompt = (choices) => {
@@ -81,40 +108,34 @@ log(chalk.bold('JIRA Task Branch'));
 
 getTaskInfo()
 .then((response) => {
-	let isTaskToDo = parseInt(response.data.fields.status.id) === jira.toDoId;
+	const relatedIssueChoices = getRelatedIssueChoices(response.data.fields.issuelinks);
+	const isTaskToDo = parseInt(response.data.fields.status.id) === jira.toDoId;
+	const maybeInProgress = isTaskToDo ? setInProgress() : false
 
 	if (!isTaskToDo) {
-		log(chalk.dim(`${currentBranch} was not "To Do". Leaving status unchanged.`))
-	} else {
-		setInProgress();
+		log(chalk.dim(`${currentBranch} was not "To Do". Leaving status unchanged.`));
 	}
-	return response;
+
+	return Promise.all([
+		maybeInProgress,
+		relatedIssueChoices
+	]);
+
 })
 .then(response => {
-	log(response.data.fields.issuelinks[0]);
+	const relatedIssuesChoices = response[1];
+	const hasRelatedIssues = !!relatedIssuesChoices.length;
 
-	let relatedIssuesChoices = response.data.fields.issuelinks.map((linkedIssue) => {
-		let direction = !!linkedIssue.inwardIssue ? 'inwardIssue' : 'outwardIssue';
+	return hasRelatedIssues ? relatedIssuePrompt(relatedIssuesChoices) : {"tasks": []};
+})
+.then(function (response) {
+	const tasksToChange = response.tasks;
+	const tasksToChangePromises = [];
 
-		if ((parseInt(linkedIssue.type.id) === jira.relatedIssueId) &&
-			(parseInt(linkedIssue[direction].fields.status.id) === jira.toDoId)) {
-
-				let taskId = linkedIssue[direction].key;
-				let taskTitle = linkedIssue[direction].fields.summary;
-
-				return {
-					name: `[${taskId}] - ${taskTitle}`,
-					value: taskId,
-				}
-		}
+	tasksToChange.forEach((task) => {
+		tasksToChangePromises.push(setInProgress(task));
 	});
 
-	if (relatedIssuesChoices[0]) {
-		return relatedIssuePrompt(relatedIssuesChoices);
-	}
-	return;
-})
-.then(function (answers) {
-	console.log(JSON.stringify(answers, null, '  '));
+	return Promise.all(tasksToChangePromises);
 })
 .catch(e => console.log(e));
