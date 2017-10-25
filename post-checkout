@@ -3,17 +3,118 @@
 // Imports
 const parseGitConfig = require('parse-git-config');
 const git = require('git-rev-sync');
+const axios = require('axios');
+const chalk = require('chalk');
+const inquirer = require('inquirer');
 
 
 // Variable Setup
+// Shortcut for chalk logging
+const log = console.log;
+// username to use for absolute path to global .gitconfig file
 const osUsername = require("os").userInfo().username;
+// Parses global .gitconfig file
 const gitConfig = parseGitConfig.sync({
 	path: `/Users/${osUsername}/.gitconfig`,
 });
+// Sets up JIRA related variables
 const jira = {
 	"self": gitConfig.jira.username,
 	"key": gitConfig.jira.key,
 	"inProgressId": 21,
 	"toDoId": 10000,
+	"relatedIssueId": 10003,
 };
-const currentBranch = git.branch();
+// Gets current branch name
+// const currentBranch = git.branch();
+const currentBranch = 'REH-317';
+// Boolean to determine if current branch is a Jira Task
+const isJiraTask = !!currentBranch.split("").reverse().join("").match(RegExp(/\d+-[A-Z]+(?!-?[a-zA-Z]{1,10})/));
+// Axios instance for pinging the JIRA API
+const jiraAPI = axios.create({
+	baseURL: 'https://recoverybrands.atlassian.net/rest/api/2',
+	headers: {'Authorization': `Basic ${jira.key}`},
+});
+
+const setInProgress = (taskId = currentBranch) => {
+	return jiraAPI.post(`/issue/${taskId}/transitions`, {
+		"transition": {
+			"id": jira.inProgressId,
+		}
+	})
+	.then(response => {
+		if (response.status !== 204) {
+			log(chalk.red(`API Error. ${taskId} status not changed.`))
+		} else {
+			log(chalk.green(`${taskId} Changed to 'In Progress'`));
+		}
+
+		return response;
+	});
+};
+
+const getTaskInfo = (taskId = currentBranch) => {
+	return jiraAPI.get(`/issue/${taskId}/?fields=status,issuelinks,summary`);
+};
+
+const assignTaskToSelf = () => {
+
+};
+
+const relatedIssuePrompt = (choices) => {
+	return inquirer.prompt([
+		{
+			type: 'checkbox',
+			name: 'tasks',
+			message: `The following tasks are related to ${currentBranch} and have not been started.\nSelect the items you'd like to switch to "In Progress".\n`,
+			choices: choices
+		}
+	]);
+};
+
+if (!isJiraTask) {
+	log(chalk.bold('Not a JIRA Task Branch'));
+	return;
+}
+
+log(chalk.bold('JIRA Task Branch'));
+
+getTaskInfo()
+.then((response) => {
+	let isTaskToDo = parseInt(response.data.fields.status.id) === jira.toDoId;
+
+	if (!isTaskToDo) {
+		log(chalk.dim(`${currentBranch} was not "To Do". Leaving status unchanged.`))
+	} else {
+		setInProgress();
+	}
+	return response;
+})
+.then(response => {
+	log(response.data.fields.issuelinks[0]);
+
+	let relatedIssuesChoices = response.data.fields.issuelinks.map((linkedIssue) => {
+		let direction = !!linkedIssue.inwardIssue ? 'inwardIssue' : 'outwardIssue';
+
+		if ((parseInt(linkedIssue.type.id) === jira.relatedIssueId) &&
+			(parseInt(linkedIssue[direction].fields.status.id) === jira.toDoId)) {
+
+				let taskId = linkedIssue[direction].key;
+				let taskTitle = linkedIssue[direction].fields.summary;
+
+				return {
+					name: `[${taskId}] - ${taskTitle}`,
+					value: taskId,
+				}
+		}
+	});
+
+	if (relatedIssuesChoices[0]) {
+		return relatedIssuePrompt(relatedIssuesChoices);
+	}
+	return;
+})
+.then(function (answers) {
+	console.log(JSON.stringify(answers, null, '  '));
+})
+.catch(e => console.log(e));
