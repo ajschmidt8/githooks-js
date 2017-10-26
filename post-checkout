@@ -97,14 +97,19 @@ const assignTaskToSelf = (taskId) => {
 };
 
 const relatedIssuePrompt = (choices) => {
-	return inquirer.prompt([
-		{
-			type: 'checkbox',
-			name: 'tasks',
-			message: `The following tasks are related to ${currentBranch} and have not been started.\nSelect the items you'd like to switch to "In Progress".\n`,
-			choices: choices
-		}
-	]);
+
+	if (choices.length) {
+		return inquirer.prompt([
+			{
+				type: 'checkbox',
+				name: 'tasks',
+				message: `The following tasks are related to ${currentBranch} and have not been started.\nSelect the items you'd like to switch to "In Progress".\n`,
+				choices: choices
+			}
+		]);
+	} else {
+		return {"tasks": []};
+	}
 };
 
 if (!isJiraTask) {
@@ -132,9 +137,7 @@ getTaskInfo()
 })
 .then(response => {
 	const relatedIssuesChoices = response[1];
-	const hasRelatedIssues = !!relatedIssuesChoices.length;
-
-	return hasRelatedIssues ? relatedIssuePrompt(relatedIssuesChoices) : {"tasks": []};
+	return relatedIssuePrompt(relatedIssuesChoices)
 })
 .then(function (response) {
 	const tasksToChange = response.tasks;
