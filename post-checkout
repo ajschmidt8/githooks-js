@@ -28,7 +28,10 @@ const jira = {
 // Gets current branch name
 // const currentBranch = git.branch();
 const currentBranch = 'REH-332';
+
 // Boolean to determine if current branch is a Jira Task
+// (branch name has to be reversed, see explanation here:
+// https://community.atlassian.com/t5/Bitbucket-questions/Regex-pattern-to-match-JIRA-issue-key/qaq-p/233319)
 const isJiraTask = !!currentBranch.split("").reverse().join("").match(RegExp(/\d+-[A-Z]+(?!-?[a-zA-Z]{1,10})/));
 // Axios instance for pinging the JIRA API
 const jiraAPI = axios.create({
