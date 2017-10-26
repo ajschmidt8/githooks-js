@@ -36,6 +36,9 @@ const jiraAPI = axios.create({
 	headers: {'Authorization': `Basic ${jira.key}`},
 });
 
+// This function filters the linked issues (as returned by JIRA) for a task
+// and returns only the "Related" tasks. The output format is ready to be used
+// as choices for an Inquirer.js prompt.
 const getRelatedIssueChoices = (linkedIssues) => {
 
 	let relatedIssuesChoices = linkedIssues.reduce((filteredData, linkedIssue) => {
@@ -59,6 +62,7 @@ const getRelatedIssueChoices = (linkedIssues) => {
 	return relatedIssuesChoices;
 };
 
+// Sets a given task to "In Progress"
 const setInProgress = (taskId = currentBranch) => {
 	return jiraAPI.post(`/issue/${taskId}/transitions`, {
 		"transition": {
@@ -76,11 +80,13 @@ const setInProgress = (taskId = currentBranch) => {
 	});
 };
 
+// Gets a tasks info from JIRA
 const getTaskInfo = (taskId = currentBranch) => {
 	return jiraAPI.get(`/issue/${taskId}/?fields=status,issuelinks,summary`);
 
 };
 
+// Assigns a task to self
 const assignTaskToSelf = (taskId) => {
 	return jiraAPI.put(`/issue/${taskId}/assignee`, {
 		"name": jira.self,
@@ -96,6 +102,8 @@ const assignTaskToSelf = (taskId) => {
 	});
 };
 
+// Create an Inquirer.js prompt to ask user which related tasks should also be
+// set to "In Progress" and assigned to self.
 const relatedIssuePrompt = (choices) => {
 
 	if (choices.length) {
